@@ -1,3 +1,3 @@
-module com.armineasy.activitymaster.forums {
+module com.guicedee.activitymaster.forums {
 
 }
