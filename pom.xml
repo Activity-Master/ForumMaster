@@ -12,7 +12,11 @@
     <artifactId>forum-master</artifactId>
     <packaging>jar</packaging>
     <name>Forum Master</name>
-	
+
+    <properties>
+        <project.scm.nameUrl>/Activity-Master/ForumMaster</project.scm.nameUrl>
+    </properties>
+
     <dependencies>
      
     </dependencies>
