@@ -1,11 +1,16 @@
 package com.guicedee.activitymaster.forums;
 
 import com.guicedee.activitymaster.fsdm.transactions.ActivityScope;
+import com.guicedee.activitymaster.fsdm.plugins.PluginModels.Invocation;
 import java.util.Objects;
 import java.util.UUID;
 
 /** A host-resolved actor and FSDM context. This is never request body data. */
-public record ForumIdentity(UUID partyId, UUID enterpriseId, ActivityScope.Context context, UUID identityToken) {
+public record ForumIdentity(UUID partyId, UUID enterpriseId, ActivityScope.Context context, UUID identityToken,
+                            Invocation plugin) {
+    public ForumIdentity(UUID partyId, UUID enterpriseId, ActivityScope.Context context, UUID identityToken) {
+        this(partyId, enterpriseId, context, identityToken, null);
+    }
     public ForumIdentity {
         Objects.requireNonNull(partyId, "partyId");
         Objects.requireNonNull(enterpriseId, "enterpriseId");

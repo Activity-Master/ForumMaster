@@ -10,6 +10,20 @@ denies access. Personal and Social context owners must be the verified party; Wo
 authorized enterprise. The service checks the live party and FSDM grants on each operation. A
 party ID in a request is only a subscription target, never the actor's identity.
 
+For plugin calls, supply the optional fifth `ForumIdentity` field with a host-bound
+`PluginModels.Invocation`, keeping the authenticated user's credential. The service
+requires current installation, Forum Master declaration, user consent and administrator
+permission before its normal grants and membership checks. REST and GraphQL share this
+boundary; GraphQL cannot supply or clear the invocation. The original four-argument
+constructor remains available for ordinary calls.
+
+`NotificationIdentityProvider` must preserve the same invocation. Shared posts also
+require a Notification Master declaration and separate user consent, as well as the
+existing publishing grants; denial rolls back the post. `ForumApi` records plugin
+initiation audits for successful mutations while records retain Forum Master's source
+ID. Direct low-level writes must compose their own audit. See
+[the plugin contract](../core/docs/plugins.md) for provisioning and lifecycle details.
+
 The creator is the forum moderator and stays subscribed. Only that moderator may add, remove, or
 replace subscribers. Subscribers must be live organic involved parties in the enterprise.
 Subscribers may read and post; other callers get 404 for that forum. A subscriber may leave, which

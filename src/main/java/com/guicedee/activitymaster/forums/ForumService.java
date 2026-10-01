@@ -4,6 +4,8 @@ import com.guicedee.activitymaster.forums.ForumModels.*;
 import com.guicedee.activitymaster.fsdm.client.services.IActiveFlagService;
 import com.guicedee.activitymaster.fsdm.client.services.ISecurityTokenService;
 import com.guicedee.activitymaster.fsdm.client.services.builders.warehouse.systems.ISystems;
+import com.guicedee.activitymaster.fsdm.plugins.PluginModels;
+import com.guicedee.activitymaster.fsdm.plugins.PluginService;
 import com.google.inject.Inject;
 import io.smallrye.mutiny.Uni;
 import jakarta.ws.rs.BadRequestException;
@@ -18,6 +20,7 @@ import java.util.*;
 public final class ForumService implements IForumService {
     @Inject private IActiveFlagService<?> flags;
     @Inject private ISecurityTokenService<?> security;
+    @Inject private PluginService plugins;
     private static final int MAX_SUBSCRIBERS = 50;
     private static final int MAX_TITLE = 150;
     private static final int MAX_TEXT = 65_536;
@@ -37,10 +40,13 @@ public final class ForumService implements IForumService {
     private Uni<Scope> actor(Mutiny.StatelessSession session, ISystems<?, ?> system, ForumIdentity identity) {
         Scope scope = scope(system, identity);
         if (session == null) return Uni.createFrom().failure(new BadRequestException("Session required"));
-        return session.createNativeQuery("select 1 from security.securitytoken k where k.securitytoken=:token "
+        return (identity.plugin() == null ? Uni.createFrom().voidItem()
+                : plugins.check(session, system, new PluginModels.Identity(identity.partyId(), identity.enterpriseId(),
+                        identity.identityToken()), identity.plugin()))
+                .chain(() -> session.createNativeQuery("select 1 from security.securitytoken k where k.securitytoken=:token "
                         + "and " + live("k"), Integer.class)
                 .setParameter("token", identity.identityToken().toString())
-                .setParameter("enterprise", scope.enterprise()).getResultList()
+                .setParameter("enterprise", scope.enterprise()).getResultList())
                 .chain(identities -> {
                     if (identities.isEmpty()) return Uni.createFrom().failure(new SecurityException("Caller token unavailable"));
                     return session.createNativeQuery("select 1 from party.involvedparty p where p.involvedpartyid=:actor "

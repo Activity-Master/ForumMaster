@@ -4,6 +4,8 @@ import com.google.inject.Inject;
 import com.guicedee.activitymaster.forums.ForumModels.*;
 import com.guicedee.activitymaster.fsdm.client.services.SessionUtils;
 import com.guicedee.activitymaster.fsdm.client.services.builders.warehouse.systems.ISystems;
+import com.guicedee.activitymaster.fsdm.plugins.PluginModels;
+import com.guicedee.activitymaster.fsdm.plugins.PluginService;
 import com.guicedee.activitymaster.notifications.INotificationService;
 import com.guicedee.activitymaster.notifications.NotificationSystem;
 import com.guicedee.activitymaster.notifications.NotificationModels.Published;
@@ -29,6 +31,8 @@ public final class ForumApi {
     private final INotificationService notifications;
     private final NotificationDispatcher dispatcher;
     private final NotificationIdentityProvider notificationIdentities;
+    @Inject private PluginService plugins;
+    private PluginService plugins() { return plugins == null ? com.guicedee.client.IGuiceContext.get(PluginService.class) : plugins; }
     private record CommittedPost(Post post, NotificationIdentity identity, Publish request, Published published) { }
     private record PostingNotificationIdentity(NotificationIdentity identity, Throwable failure) { }
 
@@ -46,30 +50,33 @@ public final class ForumApi {
         Uni<T> run(Mutiny.StatelessSession session, ISystems<?, ?> system, ForumIdentity identity);
     }
 
-    private <T> Uni<T> execute(String enterprise, Work<T> work) {
+    private <T> Uni<T> execute(String enterprise, String operation, Work<T> work) {
         if (enterprise == null || enterprise.isBlank())
             return Uni.createFrom().failure(new IllegalArgumentException("Enterprise required"));
         return Uni.createFrom().deferred(identities::current)
                 .onItem().ifNull().failWith(() -> new SecurityException("Authenticated forum identity required"))
-                .chain(identity -> execute(enterprise, identity, work));
+                .chain(identity -> execute(enterprise, identity, operation, work));
     }
 
-    private <T> Uni<T> execute(String enterprise, ForumIdentity identity, Work<T> work) {
+    private <T> Uni<T> execute(String enterprise, ForumIdentity identity, String operation, Work<T> work) {
         return SessionUtils.withActivityMaster(enterprise, ForumSystem.NAME, tuple -> {
             if (!identity.enterpriseId().equals(tuple.getItem2().getId()))
                 return Uni.createFrom().failure(new SecurityException("Forum enterprise scope mismatch"));
-            return work.run(tuple.getItem1(), tuple.getItem3(), identity);
+            return work.run(tuple.getItem1(), tuple.getItem3(), identity)
+                    .call(_ -> identity.plugin() == null || operation == null ? Uni.createFrom().voidItem()
+                            : plugins().audit(tuple.getItem1(), tuple.getItem3(), new PluginModels.Identity(identity.partyId(),
+                                    identity.enterpriseId(), identity.identityToken()), identity.plugin(), operation));
         });
     }
 
     public Uni<Forum> create(String enterprise, Create request) {
-        return execute(enterprise, (session, system, identity) -> service.create(session, system, identity, request));
+        return execute(enterprise, "forum.create", (session, system, identity) -> service.create(session, system, identity, request));
     }
     public Uni<Forum> find(String enterprise, UUID id) {
-        return execute(enterprise, (session, system, identity) -> service.find(session, system, identity, id));
+        return execute(enterprise, null, (session, system, identity) -> service.find(session, system, identity, id));
     }
     public Uni<Page<Forum>> list(String enterprise, int offset, int limit) {
-        return execute(enterprise, (session, system, identity) -> service.list(session, system, identity, offset, limit));
+        return execute(enterprise, null, (session, system, identity) -> service.list(session, system, identity, offset, limit));
     }
     public Uni<Post> post(String enterprise, UUID id, PublishPost request) {
         if (enterprise == null || enterprise.isBlank())
@@ -82,7 +89,7 @@ public final class ForumApi {
                 .map(identity -> new PostingNotificationIdentity(identity, null))
                 .onFailure().recoverWithItem(failure -> new PostingNotificationIdentity(null, failure));
         return Uni.combine().all().unis(forumIdentity, noticeIdentity).asTuple().chain(verified ->
-                execute(enterprise, verified.getItem1(), (session, system, identity) -> service.post(session, system, identity, id, request)
+                execute(enterprise, verified.getItem1(), "forum.post", (session, system, identity) -> service.post(session, system, identity, id, request)
                         .chain(post -> service.find(session, system, identity, id)
                                 .chain(forum -> {
                                     List<UUID> audience = forum.subscribers().stream()
@@ -125,22 +132,23 @@ public final class ForumApi {
         if (!forum.partyId().equals(notification.partyId())
                 || !forum.enterpriseId().equals(notification.enterpriseId())
                 || !forum.context().equals(notification.context())
-                || !forum.identityToken().equals(notification.identityToken()))
+                || !forum.identityToken().equals(notification.identityToken())
+                || !java.util.Objects.equals(forum.plugin(), notification.plugin()))
             throw new SecurityException("Forum and notification identity mismatch");
     }
     public Uni<Page<Post>> posts(String enterprise, UUID id, int offset, int limit) {
-        return execute(enterprise, (session, system, identity) -> service.posts(session, system, identity, id, offset, limit));
+        return execute(enterprise, null, (session, system, identity) -> service.posts(session, system, identity, id, offset, limit));
     }
     public Uni<Forum> addSubscriber(String enterprise, UUID id, UUID partyId) {
-        return execute(enterprise, (session, system, identity) -> service.addSubscriber(session, system, identity, id, partyId));
+        return execute(enterprise, "forum.addSubscriber", (session, system, identity) -> service.addSubscriber(session, system, identity, id, partyId));
     }
     public Uni<Forum> removeSubscriber(String enterprise, UUID id, UUID partyId) {
-        return execute(enterprise, (session, system, identity) -> service.removeSubscriber(session, system, identity, id, partyId));
+        return execute(enterprise, "forum.removeSubscriber", (session, system, identity) -> service.removeSubscriber(session, system, identity, id, partyId));
     }
     public Uni<Forum> updateSubscribers(String enterprise, UUID id, UpdateSubscribers request) {
-        return execute(enterprise, (session, system, identity) -> service.updateSubscribers(session, system, identity, id, request));
+        return execute(enterprise, "forum.updateSubscribers", (session, system, identity) -> service.updateSubscribers(session, system, identity, id, request));
     }
     public Uni<Void> leave(String enterprise, UUID id) {
-        return execute(enterprise, (session, system, identity) -> service.leave(session, system, identity, id));
+        return execute(enterprise, "forum.leave", (session, system, identity) -> service.leave(session, system, identity, id));
     }
 }

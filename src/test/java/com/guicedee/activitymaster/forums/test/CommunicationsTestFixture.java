@@ -21,6 +21,14 @@ final class CommunicationsTestFixture {
     IForumService service;
     UUID enterpriseId, actorId, recipientId, outsiderId, token;
     NotificationScopedFixture grants;
+    private final java.util.Map<UUID, UUID> tokens = new java.util.HashMap<>();
+    UUID tokenFor(UUID party) { return tokens.get(party); }
+    private Uni<Void> enableConversation(Mutiny.StatelessSession session,
+            com.guicedee.activitymaster.fsdm.client.services.builders.warehouse.enterprise.IEnterprise<?, ?> enterprise,
+            com.guicedee.activitymaster.fsdm.plugins.PluginModels.Identity user) {
+        return IGuiceContext.get(com.guicedee.activitymaster.conversations.ConversationSystem.class).getSystem(session, enterprise)
+                .chain(conversation -> PluginTestFixture.enable(session, conversation, user));
+    }
     private static CommunicationsTestFixture instance;
     static synchronized CommunicationsTestFixture get() {
         if (instance == null) instance = new CommunicationsTestFixture();
@@ -52,17 +60,16 @@ final class CommunicationsTestFixture {
                 .chain(e -> enterprises.loadUpdates(session, e))).await().atMost(Duration.ofMinutes(5));
         run(c -> {
             enterpriseId = c.getItem2().getId();
-            token = c.getItem4()[0];
-            IInvolvedPartyService<?> parties = IGuiceContext.get(IInvolvedPartyService.class);
-            return parties.createIdentificationType(c.getItem1(), c.getItem3(), "CommunicationsTestId", "Test party", token)
-                    .chain(() -> parties.create(c.getItem1(), c.getItem3(), new Pair<>("CommunicationsTestId", UUID.randomUUID().toString()), true, token))
-                    .chain(actor -> {
-                        actorId = actor.getId();
-                        return parties.create(c.getItem1(), c.getItem3(), new Pair<>("CommunicationsTestId", UUID.randomUUID().toString()), true, token);
-                    }).chain(recipient -> {
-                        recipientId = recipient.getId();
-                        return parties.create(c.getItem1(), c.getItem3(), new Pair<>("CommunicationsTestId", UUID.randomUUID().toString()), true, token);
-                    }).invoke(outsider -> outsiderId = outsider.getId()).replaceWithVoid();
+            return PluginTestFixture.user(c.getItem1(), c.getItem2()).chain(actor -> {
+                actorId = actor.partyId(); token = actor.identityToken(); tokens.put(actor.partyId(), actor.identityToken());
+                return enableConversation(c.getItem1(), c.getItem2(), actor);
+            }).chain(() -> PluginTestFixture.user(c.getItem1(), c.getItem2())).chain(recipient -> {
+                recipientId = recipient.partyId(); tokens.put(recipient.partyId(), recipient.identityToken());
+                return enableConversation(c.getItem1(), c.getItem2(), recipient);
+            }).chain(() -> PluginTestFixture.user(c.getItem1(), c.getItem2())).chain(outsider -> {
+                outsiderId = outsider.partyId(); tokens.put(outsider.partyId(), outsider.identityToken());
+                return enableConversation(c.getItem1(), c.getItem2(), outsider);
+            });
         });
         UUID notificationSystem = SessionUtils.withActivityMaster(ENTERPRISE, NotificationSystem.NAME,
                 c -> Uni.createFrom().item(c.getItem3().getId())).await().atMost(Duration.ofMinutes(2));
@@ -74,6 +81,8 @@ final class CommunicationsTestFixture {
             grants.actorRead(actorId);
             grants.actorRead(recipientId);
             grants.actorRead(outsiderId);
+            new NotificationScopedFixture(database, notificationSystem, enterpriseId, tokenFor(recipientId)).actorRead(recipientId);
+            new NotificationScopedFixture(database, notificationSystem, enterpriseId, tokenFor(outsiderId)).actorRead(outsiderId);
         } catch (Exception failure) { throw new IllegalStateException(failure); }
 
     }

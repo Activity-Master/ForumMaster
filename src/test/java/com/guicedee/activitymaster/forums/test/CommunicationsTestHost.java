@@ -42,7 +42,7 @@ public final class CommunicationsTestHost extends AbstractModule implements IGui
         @Override public Uni<ForumIdentity> current() {
             NotificationIdentity i = identity();
             return i == null ? new ForumIdentityProvider.Deny().current()
-                    : Uni.createFrom().item(new ForumIdentity(i.partyId(), i.enterpriseId(), i.context(), i.identityToken()));
+                    : Uni.createFrom().item(new ForumIdentity(i.partyId(), i.enterpriseId(), i.context(), i.identityToken(), i.plugin()));
         }
     }
     public static final class ConversationProvider implements ConversationIdentityProvider {

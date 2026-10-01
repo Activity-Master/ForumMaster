@@ -1,6 +1,7 @@
 import com.guicedee.client.services.lifecycle.IGuiceModule;
 
 open module activity.master.forum.tests {
+    requires com.guicedee.activitymaster.mail;
     requires com.guicedee.activitymaster.forums;
     requires com.guicedee.activitymaster.notifications;
     requires com.guicedee.activitymaster.conversations;

@@ -79,6 +79,19 @@ final class NotificationScopedFixture
 				+ event + "'");
 	}
 
+    void reader(UUID userCredential) throws Exception {
+        sql("""
+                insert into event.eventsecuritytoken
+                (eventssecuritytokenid,effectivefromdate,effectivetodate,warehousecreatedtimestamp,warehousefromdate,
+                 warehouselastupdatedtimestamp,createallowed,deleteallowed,originalsourcesystemuniqueid,
+                 readallowed,updateallowed,activeflagid,enterpriseid,originalsourcesystemid,securitytokenid,systemid,eventsid)
+                select gen_random_uuid(),statement_timestamp()-interval '1 minute','2999-12-31',statement_timestamp(),current_date,
+                       statement_timestamp(),0,0,e.eventid,1,0,e.activeflagid,e.enterpriseid,e.systemid,k.securitytokenid,e.systemid,e.eventid
+                from event.event e join security.securitytoken k on k.enterpriseid=e.enterpriseid and k.securitytoken='%s'
+                where e.enterpriseid='%s' and e.systemid='%s'
+                """.formatted(userCredential, enterprise, system));
+    }
+
 	private UUID event(String type) throws Exception
 	{
 		UUID id = UUID.randomUUID();

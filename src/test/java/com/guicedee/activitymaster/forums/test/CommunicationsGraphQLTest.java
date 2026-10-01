@@ -37,8 +37,8 @@ class CommunicationsGraphQLTest {
     @BeforeAll void setup() throws Exception {
         fixture = CommunicationsTestFixture.get();
         owner = CommunicationsTestHost.issue(identity(fixture.actorId, fixture.enterpriseId, fixture.token));
-        reader = CommunicationsTestHost.issue(identity(fixture.recipientId, fixture.enterpriseId, fixture.token));
-        outsider = CommunicationsTestHost.issue(identity(fixture.outsiderId, fixture.enterpriseId, fixture.token));
+        reader = CommunicationsTestHost.issue(identity(fixture.recipientId, fixture.enterpriseId, fixture.tokenFor(fixture.recipientId)));
+        outsider = CommunicationsTestHost.issue(identity(fixture.outsiderId, fixture.enterpriseId, fixture.tokenFor(fixture.outsiderId)));
         mapper = IGuiceContext.get(DefaultObjectMapper);
         long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
         while (CommunicationsTestHost.server == null || CommunicationsTestHost.server.actualPort() <= 0) {
@@ -106,6 +106,18 @@ class CommunicationsGraphQLTest {
         for (String name : List.of("forum", "forums", "forumPosts", "conversation", "conversations", "conversationMessages",
                 "notification", "notifications", "notificationCounts", "notificationDeliveries", "forumCreate", "forumUpdateSubscribers",
                 "conversationCreate", "conversationSend", "notificationPublish", "notificationReadAll")) assertTrue(schema.contains("\"" + name + "\""), name);
+    }
+
+    @Test void graphQLPreservesHostPluginContextAndRejectsUndelegatedCredentials() throws Exception {
+        // The ordinary test host uses a system credential. Attaching a plugin must never
+        // silently downgrade this request to the legacy, non-plugin identity path.
+        result(read("forums", "", "{ items { id } }", owner), "forums");
+        NotificationIdentity plain = identity(fixture.actorId, fixture.enterpriseId, fixture.token);
+        String delegated = CommunicationsTestHost.issue(new NotificationIdentity(plain.partyId(), plain.enterpriseId(),
+                plain.context(), plain.identityToken(), new com.guicedee.activitymaster.fsdm.plugins.PluginModels.Invocation(
+                        UUID.randomUUID(), fixture.actorId)));
+        error(read("forums", "", "{ items { id } }", delegated), "FORBIDDEN");
+        error(read("notifications", "", "{ items { id } }", delegated), "FORBIDDEN");
     }
 
     @Test void forumPostsPublishNoticesAndRetainPagingAndRecords() throws Exception {
